@@ -314,11 +314,12 @@ async function generateImageSuggestions(prompt, contentType, generatedContent) {
 
 // Helper function to try multiple models with retry
 async function generateWithRetry(prompt, maxRetries = 2) {
-  // Use models with better rate limits first
+  // Updated model names - use current available models
+  // See: https://ai.google.dev/gemini-api/docs/models/gemini
   const models = [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash",
+    "gemini-2.0-flash",           // Fastest, most available
+    "gemini-1.5-flash-latest",    // Latest 1.5 flash
+    "gemini-1.5-pro-latest",      // Latest 1.5 pro (fallback)
   ];
 
   for (const modelName of models) {
