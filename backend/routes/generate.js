@@ -1,8 +1,93 @@
 const express = require("express");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI, GoogleAIFileManager } = require("@google/generative-ai");
 
 const router = express.Router();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Gemini Imagen 3 - AI Image Generation
+async function generateImageWithImagen(prompt, contentType) {
+  try {
+    // Use Gemini's imagen-3.0-generate-002 model for image generation
+    const imageModel = genAI.getGenerativeModel({ 
+      model: "imagen-3.0-generate-002"
+    });
+    
+    const imagePrompt = `Create a professional, high-quality illustration for: ${prompt}. 
+Style: Modern, clean, suitable for ${contentType || 'article'}. 
+Requirements: No text, visually appealing, professional quality.`;
+
+    console.log("Generating image with Imagen 3:", imagePrompt.substring(0, 100) + "...");
+
+    const result = await imageModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: imagePrompt }] }],
+      generationConfig: {
+        responseModalities: ["image", "text"],
+        responseMimeType: "image/png"
+      }
+    });
+
+    const response = result.response;
+    
+    // Check if we got an image in the response
+    if (response.candidates && response.candidates[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
+          // Return base64 data URL
+          const base64Image = part.inlineData.data;
+          const mimeType = part.inlineData.mimeType;
+          console.log("Successfully generated AI image with Imagen 3");
+          return `data:${mimeType};base64,${base64Image}`;
+        }
+      }
+    }
+    
+    console.log("No image in Imagen response, falling back");
+    return null;
+  } catch (error) {
+    console.error("Imagen 3 image generation failed:", error.message);
+    return null;
+  }
+}
+
+// Alternative: Use Gemini 2.0 Flash for image generation (supports native image output)
+async function generateImageWithGemini2Flash(prompt, contentType) {
+  try {
+    const imageModel = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash-exp"
+    });
+    
+    const imagePrompt = `Generate an image: A professional, high-quality visual representation for "${prompt}". 
+Style: Modern, clean design suitable for ${contentType || 'article'}.
+The image should be visually striking and relevant to the topic.`;
+
+    console.log("Generating image with Gemini 2.0 Flash...");
+
+    const result = await imageModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: imagePrompt }] }],
+      generationConfig: {
+        responseModalities: ["image"],
+      }
+    });
+
+    const response = result.response;
+    
+    if (response.candidates && response.candidates[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
+          const base64Image = part.inlineData.data;
+          const mimeType = part.inlineData.mimeType;
+          console.log("Successfully generated AI image with Gemini 2.0 Flash");
+          return `data:${mimeType};base64,${base64Image}`;
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Gemini 2.0 Flash image generation failed:", error.message);
+    return null;
+  }
+}
 
 /**
  * @swagger
@@ -149,28 +234,51 @@ async function fetchUnsplashImages(keywords) {
 }
 
 // Helper function to generate relevant image suggestions
+// Image 1: AI-generated using Gemini Imagen 3
+// Images 2 & 3: Unsplash or Picsum fallback
 async function generateImageSuggestions(prompt, contentType, generatedContent) {
   try {
-    // Step 1: Use AI to extract relevant visual keywords
+    const images = [];
+    
+    // IMAGE 1: Generate with Gemini Imagen 3 (AI-generated)
+    console.log("🎨 Generating AI image with Gemini Imagen 3...");
+    let aiGeneratedImage = await generateImageWithImagen(prompt, contentType);
+    
+    // Fallback to Gemini 2.0 Flash if Imagen 3 fails
+    if (!aiGeneratedImage) {
+      console.log("Trying Gemini 2.0 Flash as fallback for AI image...");
+      aiGeneratedImage = await generateImageWithGemini2Flash(prompt, contentType);
+    }
+    
+    if (aiGeneratedImage) {
+      images.push(aiGeneratedImage);
+      console.log("✅ AI-generated image added as first image");
+    }
+    
+    // IMAGES 2 & 3: Use Unsplash/Picsum (current implementation)
+    console.log("📷 Fetching stock images for remaining slots...");
     const keywords = await extractImageKeywords(prompt, contentType, generatedContent);
     console.log("AI-extracted image keywords:", keywords);
 
-    // Step 2: Try to fetch real images from Unsplash
-    const unsplashImages = await fetchUnsplashImages(keywords);
+    // Try to fetch real images from Unsplash for remaining slots
+    const unsplashImages = await fetchUnsplashImages(keywords.slice(0, 2)); // Only need 2 more
     
     if (unsplashImages && unsplashImages.length > 0) {
-      console.log(`Found ${unsplashImages.length} relevant images from Unsplash`);
-      return unsplashImages;
+      console.log(`Found ${unsplashImages.length} images from Unsplash`);
+      images.push(...unsplashImages);
+    }
+    
+    // Fill remaining slots with Picsum fallback
+    const baseTime = Date.now();
+    while (images.length < 3) {
+      const index = images.length;
+      const imageId = ((baseTime + index * 100) % 1000) + 1;
+      const cacheBuster = baseTime + index;
+      images.push(`https://picsum.photos/800/600?random=${imageId}&t=${cacheBuster}`);
     }
 
-    // Step 3: Fallback to Picsum with relevant IDs based on keywords
-    console.log("Using fallback images");
-    const baseTime = Date.now();
-    return keywords.map((keyword, i) => {
-      const imageId = ((baseTime + i * 100) % 1000) + 1;
-      const cacheBuster = baseTime + i;
-      return `https://picsum.photos/800/600?random=${imageId}&t=${cacheBuster}`;
-    });
+    console.log(`📸 Total images prepared: ${images.length} (1 AI-generated + ${images.length - 1} stock)`);
+    return images.slice(0, 3); // Return exactly 3 images
   } catch (error) {
     console.error("Error generating image suggestions:", error);
     // Final fallback
@@ -276,6 +384,11 @@ Start directly with the content.`;
       wordCount: text.split(/\s+/).length,
       platform: platform || "standard",
       images: imageUrls,
+      imageTypes: [
+        imageUrls[0]?.startsWith('data:') ? 'ai-generated' : 'stock',
+        'stock',
+        'stock'
+      ]
     });
   } catch (error) {
     console.error("Error generating content:", error);
