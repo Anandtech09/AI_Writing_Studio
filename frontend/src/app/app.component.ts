@@ -29,6 +29,7 @@ export class AppComponent {
   contentHistory: Array<{content: string, timestamp: Date}> = [];
   currentVersion = 0;
   contentImages: string[] = [];
+  imageTypes: ('ai-generated' | 'stock')[] = [];
   
   // Angular Signals for reactive state
   isDarkMode = signal(false);
@@ -181,6 +182,7 @@ export class AppComponent {
         this.actualWordCount = response.wordCount;
         this.contentStatus = 'draft';
         this.contentImages = response.images || [];
+        this.imageTypes = response.imageTypes || [];
         this.addToHistory(response.content);
         this.isLoading = false;
       },

@@ -299,6 +299,8 @@
                     *ngFor="let image of contentImages; let i = index"
                     class="image-card"
                   >
+                    <span *ngIf="imageTypes[i] === 'ai-generated'" class="ai-badge">🎨 AI Generated</span>
+                    <span *ngIf="imageTypes[i] === 'stock'" class="stock-badge">📷 Stock</span>
                     <img
                       [src]="image"
                       [alt]="'Content image ' + (i + 1)"

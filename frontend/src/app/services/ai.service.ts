@@ -14,13 +14,14 @@ export interface GenerateResponse {
   content: string;
   wordCount: number;
   images?: string[];
+  imageTypes?: ('ai-generated' | 'stock')[];
 }
 
 @Injectable({
   providedIn: "root",
 })
 export class AiService {
-  private apiUrl = "https://ai-writing-studio-5gvx.vercel.app/api";
+  private apiUrl = "http://localhost:3100/api";
 
   constructor(private http: HttpClient) {}
 
@@ -28,4 +29,3 @@ export class AiService {
     return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, request);
   }
 }
-
