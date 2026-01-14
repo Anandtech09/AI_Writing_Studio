@@ -6,7 +6,7 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const generateRouter = require('./routes/generate');
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
 // Swagger configuration
 const swaggerOptions = {
@@ -61,7 +61,5 @@ app.get('/health', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Swagger UI available at ${PORT}/api-docs`);
+  console.log(`Swagger UI available at http://localhost:${PORT}/api-docs`);
 });
-
-
