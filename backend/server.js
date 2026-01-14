@@ -61,6 +61,7 @@ app.get('/health', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Swagger UI available at http://localhost:${PORT}/api-docs`);
+  console.log(`Swagger UI available at ${PORT}/api-docs`);
 });
+
 
