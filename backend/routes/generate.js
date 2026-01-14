@@ -4,8 +4,24 @@ const { GoogleGenerativeAI, GoogleAIFileManager } = require("@google/generative-
 const router = express.Router();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// Flag to track if we're rate limited (skip AI image generation)
+let isRateLimited = false;
+let rateLimitResetTime = 0;
+
+// Check if we should skip AI image generation due to rate limits
+function shouldSkipAIImageGeneration() {
+  if (isRateLimited && Date.now() < rateLimitResetTime) {
+    console.log("⏳ Skipping AI image generation due to rate limit");
+    return true;
+  }
+  isRateLimited = false;
+  return false;
+}
+
 // Gemini Imagen 3 - AI Image Generation
 async function generateImageWithImagen(prompt, contentType) {
+  if (shouldSkipAIImageGeneration()) return null;
+  
   try {
     // Use Gemini's imagen-3.0-generate-002 model for image generation
     const imageModel = genAI.getGenerativeModel({ 
@@ -45,12 +61,20 @@ Requirements: No text, visually appealing, professional quality.`;
     return null;
   } catch (error) {
     console.error("Imagen 3 image generation failed:", error.message);
+    // Check for rate limit error
+    if (error.status === 429 || error.message?.includes('429') || error.message?.includes('quota')) {
+      isRateLimited = true;
+      rateLimitResetTime = Date.now() + 60000; // Wait 60 seconds
+      console.log("🚫 Rate limited - will skip AI image generation for 60s");
+    }
     return null;
   }
 }
 
 // Alternative: Use Gemini 2.0 Flash for image generation (supports native image output)
 async function generateImageWithGemini2Flash(prompt, contentType) {
+  if (shouldSkipAIImageGeneration()) return null;
+  
   try {
     const imageModel = genAI.getGenerativeModel({ 
       model: "gemini-2.0-flash-exp"
@@ -85,6 +109,12 @@ The image should be visually striking and relevant to the topic.`;
     return null;
   } catch (error) {
     console.error("Gemini 2.0 Flash image generation failed:", error.message);
+    // Check for rate limit error
+    if (error.status === 429 || error.message?.includes('429') || error.message?.includes('quota')) {
+      isRateLimited = true;
+      rateLimitResetTime = Date.now() + 60000; // Wait 60 seconds
+      console.log("🚫 Rate limited - will skip AI image generation for 60s");
+    }
     return null;
   }
 }
@@ -157,43 +187,35 @@ The image should be visually striking and relevant to the topic.`;
  *                   type: string
  *                   example: Failed to generate content
  */
-// Helper function to use AI to extract relevant image search terms
-async function extractImageKeywords(prompt, contentType, generatedContent) {
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-    
-    const keywordPrompt = `Analyze this content request and generated content to extract 3 specific, visual search terms for finding relevant images.
-
-Content Request: ${prompt}
-Content Type: ${contentType}
-Generated Content Preview: ${generatedContent.substring(0, 500)}
-
-Return ONLY 3 specific, visual search terms separated by commas. Each term should be:
-- Highly specific and visual (not abstract concepts)
-- Directly related to the main topic
-- Good for image search (e.g., "laptop coding", "solar panels", "brain neurons")
-- Different from each other for variety
-
-Example for "AI in healthcare": medical technology, doctor using tablet, hospital equipment
-Example for "cloud computing": data center servers, cloud network diagram, computer infrastructure
-
-Return only the 3 terms, comma-separated, nothing else:`;
-
-    const result = await model.generateContent(keywordPrompt);
-    const response = result.response;
-    const keywords = response.text().trim().split(',').map(k => k.trim()).filter(k => k.length > 0);
-    
-    return keywords.slice(0, 3);
-  } catch (error) {
-    console.error("Error extracting keywords:", error);
-    // Fallback: extract from prompt
-    const words = prompt.toLowerCase()
-      .replace(/[^\w\s]/g, '')
-      .split(' ')
-      .filter(w => w.length > 3)
-      .slice(0, 3);
-    return words.length > 0 ? words : [contentType || 'business', 'technology', 'professional'];
+// Simple keyword extraction without AI (to avoid rate limits)
+function extractKeywordsSimple(prompt, contentType) {
+  // Extract meaningful words from prompt
+  const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'about', 'write', 'create', 'make', 'generate', 'content', 'article', 'blog', 'post'];
+  
+  const words = prompt.toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !stopWords.includes(w));
+  
+  // Get unique words and prioritize longer ones
+  const uniqueWords = [...new Set(words)].sort((a, b) => b.length - a.length);
+  
+  // Take top 3 keywords
+  const keywords = uniqueWords.slice(0, 3);
+  
+  // Add content type as fallback if needed
+  if (keywords.length < 3 && contentType) {
+    keywords.push(contentType);
   }
+  
+  return keywords.length > 0 ? keywords : [contentType || 'business', 'technology', 'professional'];
+}
+
+// Helper function to extract keywords (uses simple extraction to avoid rate limits)
+async function extractImageKeywords(prompt, contentType, generatedContent) {
+  // Use simple extraction to avoid API rate limits
+  console.log("Using simple keyword extraction (rate-limit friendly)");
+  return extractKeywordsSimple(prompt, contentType);
 }
 
 // Helper function to fetch images from Unsplash API
@@ -291,11 +313,12 @@ async function generateImageSuggestions(prompt, contentType, generatedContent) {
 }
 
 // Helper function to try multiple models with retry
-async function generateWithRetry(prompt, maxRetries = 3) {
+async function generateWithRetry(prompt, maxRetries = 2) {
+  // Use models with better rate limits first
   const models = [
-    "gemini-2.0-flash-exp",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
     "gemini-2.0-flash",
-    "gemini-flash-latest",
   ];
 
   for (const modelName of models) {
