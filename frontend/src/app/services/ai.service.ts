@@ -20,7 +20,7 @@ export interface GenerateResponse {
   providedIn: "root",
 })
 export class AiService {
-  private apiUrl = "http://localhost:3100/api";
+  private apiUrl = "https://ai-writing-studio-5gvx.vercel.app/api";
 
   constructor(private http: HttpClient) {}
 
@@ -28,3 +28,4 @@ export class AiService {
     return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, request);
   }
 }
+
