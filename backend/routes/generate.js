@@ -1,0 +1,286 @@
+const express = require("express");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+const router = express.Router();
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+/**
+ * @swagger
+ * /api/generate:
+ *   post:
+ *     summary: Generate AI content
+ *     description: Generate content using Google Gemini AI based on prompt, tone, word count, and content type
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - prompt
+ *             properties:
+ *               prompt:
+ *                 type: string
+ *                 description: The content prompt or topic
+ *                 example: Write about the benefits of AI in education
+ *               tone:
+ *                 type: string
+ *                 description: The tone of the content
+ *                 enum: [formal, casual, funny, professional]
+ *                 example: professional
+ *               wordCount:
+ *                 type: number
+ *                 description: Approximate word count for the content
+ *                 example: 500
+ *               contentType:
+ *                 type: string
+ *                 description: Type of content to generate
+ *                 enum: [article, essay, ad, script, email, SEO content]
+ *                 example: article
+ *     responses:
+ *       200:
+ *         description: Content generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 content:
+ *                   type: string
+ *                   description: The generated content
+ *                 wordCount:
+ *                   type: number
+ *                   description: Actual word count of generated content
+ *       400:
+ *         description: Bad request - prompt is required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Prompt is required
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Failed to generate content
+ */
+// Helper function to use AI to extract relevant image search terms
+async function extractImageKeywords(prompt, contentType, generatedContent) {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    
+    const keywordPrompt = `Analyze this content request and generated content to extract 3 specific, visual search terms for finding relevant images.
+
+Content Request: ${prompt}
+Content Type: ${contentType}
+Generated Content Preview: ${generatedContent.substring(0, 500)}
+
+Return ONLY 3 specific, visual search terms separated by commas. Each term should be:
+- Highly specific and visual (not abstract concepts)
+- Directly related to the main topic
+- Good for image search (e.g., "laptop coding", "solar panels", "brain neurons")
+- Different from each other for variety
+
+Example for "AI in healthcare": medical technology, doctor using tablet, hospital equipment
+Example for "cloud computing": data center servers, cloud network diagram, computer infrastructure
+
+Return only the 3 terms, comma-separated, nothing else:`;
+
+    const result = await model.generateContent(keywordPrompt);
+    const response = result.response;
+    const keywords = response.text().trim().split(',').map(k => k.trim()).filter(k => k.length > 0);
+    
+    return keywords.slice(0, 3);
+  } catch (error) {
+    console.error("Error extracting keywords:", error);
+    // Fallback: extract from prompt
+    const words = prompt.toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .split(' ')
+      .filter(w => w.length > 3)
+      .slice(0, 3);
+    return words.length > 0 ? words : [contentType || 'business', 'technology', 'professional'];
+  }
+}
+
+// Helper function to fetch images from Unsplash API
+async function fetchUnsplashImages(keywords) {
+  const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+  
+  if (!UNSPLASH_ACCESS_KEY) {
+    console.log("Unsplash API key not configured, using fallback images");
+    return null;
+  }
+
+  try {
+    const images = [];
+    
+    for (const keyword of keywords) {
+      const response = await fetch(
+        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(keyword)}&per_page=1&orientation=landscape`,
+        {
+          headers: {
+            'Authorization': `Client-ID ${UNSPLASH_ACCESS_KEY}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.results && data.results.length > 0) {
+          images.push(data.results[0].urls.regular);
+        }
+      }
+    }
+
+    return images.length > 0 ? images : null;
+  } catch (error) {
+    console.error("Error fetching Unsplash images:", error);
+    return null;
+  }
+}
+
+// Helper function to generate relevant image suggestions
+async function generateImageSuggestions(prompt, contentType, generatedContent) {
+  try {
+    // Step 1: Use AI to extract relevant visual keywords
+    const keywords = await extractImageKeywords(prompt, contentType, generatedContent);
+    console.log("AI-extracted image keywords:", keywords);
+
+    // Step 2: Try to fetch real images from Unsplash
+    const unsplashImages = await fetchUnsplashImages(keywords);
+    
+    if (unsplashImages && unsplashImages.length > 0) {
+      console.log(`Found ${unsplashImages.length} relevant images from Unsplash`);
+      return unsplashImages;
+    }
+
+    // Step 3: Fallback to Picsum with relevant IDs based on keywords
+    console.log("Using fallback images");
+    const baseTime = Date.now();
+    return keywords.map((keyword, i) => {
+      const imageId = ((baseTime + i * 100) % 1000) + 1;
+      const cacheBuster = baseTime + i;
+      return `https://picsum.photos/800/600?random=${imageId}&t=${cacheBuster}`;
+    });
+  } catch (error) {
+    console.error("Error generating image suggestions:", error);
+    // Final fallback
+    return [
+      'https://picsum.photos/800/600?random=1',
+      'https://picsum.photos/800/600?random=2',
+      'https://picsum.photos/800/600?random=3'
+    ];
+  }
+}
+
+// Helper function to try multiple models with retry
+async function generateWithRetry(prompt, maxRetries = 3) {
+  const models = [
+    "gemini-2.0-flash-exp",
+    "gemini-2.0-flash",
+    "gemini-flash-latest",
+  ];
+
+  for (const modelName of models) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      } catch (error) {
+        console.log(
+          `Attempt ${attempt + 1} with ${modelName} failed:`,
+          error.message
+        );
+        if (attempt < maxRetries - 1) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * (attempt + 1))
+          );
+        }
+      }
+    }
+  }
+  throw new Error("All models failed after retries");
+}
+
+router.post("/", async (req, res) => {
+  try {
+    const { prompt, tone, wordCount, contentType, platform } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    // Platform-specific formatting instructions
+    const platformInstructions = {
+      standard: "Use clear paragraphs with proper spacing.",
+      linkedin:
+        "Format for LinkedIn: Use short paragraphs (2-3 lines), include relevant hashtags at the end, start with a hook, and use emojis sparingly for emphasis.",
+      facebook:
+        "Format for Facebook: Conversational tone, use line breaks for readability, include a call-to-action, and make it engaging for social sharing.",
+      medium:
+        "Format for Medium: Use a compelling title suggestion, include subheadings (marked with ##), write in a storytelling style, and structure with introduction, body, and conclusion.",
+      twitter:
+        "Format for Twitter/X: Create a thread-style format with numbered points, keep each section under 280 characters, use relevant hashtags.",
+      instagram:
+        "Format for Instagram caption: Start with an attention-grabbing first line, use line breaks, include relevant emojis, and add hashtags at the end.",
+      blog: "Format as a blog post: Include a catchy title, introduction, multiple sections with subheadings, bullet points where appropriate, and a conclusion with call-to-action.",
+    };
+
+    const platformInstruction =
+      platformInstructions[platform] || platformInstructions.standard;
+
+    const enhancedPrompt = `Generate ${contentType || "content"} with a ${
+      tone || "professional"
+    } tone, approximately ${wordCount || 500} words.
+
+Platform: ${platform || "standard"}
+Formatting: ${platformInstruction}
+
+Content request: ${prompt}
+
+IMPORTANT FORMATTING RULES:
+1. Use **bold** for key points and important phrases
+2. Use bullet points (•) for lists
+3. Mark section headings with ## (e.g., "## Benefits of Cloud Computing")
+4. Mark sub-headings with ### if needed
+5. Highlight main takeaways
+6. Make it visually scannable and engaging
+7. Use proper spacing between sections
+
+CRITICAL: Provide ONLY the requested content. Do NOT include:
+- Meta-commentary like "Here is...", "Here's a breakdown...", "I'll provide..."
+- Explanations about what you're doing
+- Introductory phrases about the content
+- Any text that isn't part of the actual content itself
+
+Start directly with the content.`;
+
+    const text = await generateWithRetry(enhancedPrompt);
+
+    // Generate image suggestions based on content using AI analysis
+    const imageUrls = await generateImageSuggestions(prompt, contentType, text);
+
+    res.json({
+      content: text,
+      wordCount: text.split(/\s+/).length,
+      platform: platform || "standard",
+      images: imageUrls,
+    });
+  } catch (error) {
+    console.error("Error generating content:", error);
+    res.status(500).json({ error: "Failed to generate content" });
+  }
+});
+
+module.exports = router;
