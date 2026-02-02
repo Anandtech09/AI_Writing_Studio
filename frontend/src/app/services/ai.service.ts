@@ -21,12 +21,16 @@ export interface GenerateResponse {
   providedIn: "root",
 })
 export class AiService {
-  private apiUrl = "https://ai-writing-studio-5gvx.vercel.app/api";
+  private apiUrl =
+  window.location.hostname === 'localhost'
+    ? 'http://localhost:3000'
+    : 'https://ai-writing-studio-5gvx.vercel.app';
+
 
   constructor(private http: HttpClient) {}
 
   generateContent(request: GenerateRequest): Observable<GenerateResponse> {
-    return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, request);
+    return this.http.post<GenerateResponse>(`${this.apiUrl}/api/generate`, request);
   }
 }
 

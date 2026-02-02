@@ -2,7 +2,7 @@ const express = require("express");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const router = express.Router();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY);
 
 /**
  * @swagger
@@ -101,7 +101,7 @@ async function extractImageKeywords(prompt, contentType, generatedContent) {
 
 // Helper function to fetch images from Unsplash API
 async function fetchUnsplashImages(keywords) {
-  const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+  const UNSPLASH_ACCESS_KEY = process.env.VITE_UNSPLASH_ACCESS_KEY;
   
   if (!UNSPLASH_ACCESS_KEY) {
     console.log("⚠️ Unsplash API key not configured, using fallback images only");
