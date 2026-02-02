@@ -10,7 +10,11 @@ A professional AI-powered content generation platform with human-in-the-loop wor
 - **8 Content Types**: Articles, blog posts, essays, advertisements, scripts, emails, SEO content, and social posts
 - **4 Tone Options**: Professional, casual, formal, and friendly
 - **Flexible Length**: 100-2000 words with precise control
-- **AI-Powered Image Suggestions**: Automatically fetches relevant images based on content analysis
+- **AI-Powered Image Suggestions**: 
+  - **Unsplash Stock Images**: High-quality, curated stock photos (tagged as `unsplash`)
+  - **Picsum Fallback**: Generic professional images (tagged as `stock`)
+  - **Smart Keyword Extraction**: Extracts relevant keywords from content
+  - **Automatic Fallback**: Gracefully handles API unavailability
 
 ### Human-in-the-Loop System
 
@@ -42,9 +46,9 @@ A professional AI-powered content generation platform with human-in-the-loop wor
 
 - **Runtime**: Node.js
 - **Framework**: Express.js
-- **AI Integration**: Google Gemini 2.0 API
+- **AI Integration**: Google Gemini 2.0 Flash API for content generation
+- **Image Sources**: Unsplash API (stock photos) + Picsum (fallback)
 - **API Documentation**: Swagger/OpenAPI
-- **Error Handling**: Retry logic with multiple model fallbacks
 
 ## 🚀 Getting Started
 
@@ -130,7 +134,38 @@ npx ng serve
 - **Backend API**: http://localhost:3000
 - **API Documentation**: http://localhost:3000/api-docs
 
-## 📡 API Integration
+## �️ Image Generation System
+
+### Image Generation Pipeline
+
+The app uses a reliable, multi-source image system:
+
+1. **Unsplash API** (Primary)
+   - High-quality, curated stock photos
+   - Tagged as `unsplash` in the response
+   - Requires `UNSPLASH_ACCESS_KEY` environment variable
+   - Sourced by intelligent keyword extraction from prompt
+
+2. **Picsum Fallback** (Secondary)
+   - Generic professional placeholder images
+   - Tagged as `stock` in the response
+   - Always available, no API key needed
+   - Automatically used if Unsplash unavailable
+
+### Response Format
+
+```json
+{
+  "images": ["https://images.unsplash.com/...", "https://picsum.photos/..."],
+  "imageTypes": ["unsplash", "stock", "stock"]
+}
+```
+
+Image tags:
+- `unsplash`: High-quality photo from Unsplash API
+- `stock`: Generic fallback from Picsum service
+
+##�📡 API Integration
 
 ### Generate Content Endpoint
 

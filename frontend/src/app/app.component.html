@@ -299,8 +299,9 @@
                     *ngFor="let image of contentImages; let i = index"
                     class="image-card"
                   >
+                    <span *ngIf="imageTypes[i] === 'unsplash'" class="unsplash-badge">📷 Unsplash</span>
+                    <span *ngIf="imageTypes[i] === 'stock'" class="stock-badge">📸 Stock</span>
                     <span *ngIf="imageTypes[i] === 'ai-generated'" class="ai-badge">🎨 AI Generated</span>
-                    <span *ngIf="imageTypes[i] === 'stock'" class="stock-badge">📷 Stock</span>
                     <img
                       [src]="image"
                       [alt]="'Content image ' + (i + 1)"
@@ -661,7 +662,7 @@ Content-Type: application/json
             href="https://ai-writing-studio-5gvx.vercel.app/api-docs"
             target="_blank"
             class="doc-link"
-            >http://localhost:3000/api-docs</a
+            >api_documentation</a
           >
         </section>
         <section class="doc-section">

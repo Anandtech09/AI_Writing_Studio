@@ -29,7 +29,7 @@ export class AppComponent {
   contentHistory: Array<{content: string, timestamp: Date}> = [];
   currentVersion = 0;
   contentImages: string[] = [];
-  imageTypes: ('ai-generated' | 'stock')[] = [];
+  imageTypes: ('unsplash' | 'stock' | 'ai-generated')[] = [];
   
   // Angular Signals for reactive state
   isDarkMode = signal(false);

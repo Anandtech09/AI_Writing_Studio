@@ -520,7 +520,7 @@
   animation: zoomIn 0.5s ease-out;
 }
 
-.ai-badge, .stock-badge {
+.ai-badge, .stock-badge, .unsplash-badge {
   position: absolute;
   top: 8px;
   left: 8px;
@@ -542,6 +542,12 @@
 @keyframes shimmer {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.8; }
+}
+
+.unsplash-badge {
+  background: linear-gradient(135deg, #0ea5e9, #06b6d4);
+  color: white;
+  font-weight: 700;
 }
 
 .stock-badge {

@@ -1,123 +1,8 @@
 const express = require("express");
-const { GoogleGenerativeAI, GoogleAIFileManager } = require("@google/generative-ai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const router = express.Router();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// Flag to track if we're rate limited (skip AI image generation)
-let isRateLimited = false;
-let rateLimitResetTime = 0;
-
-// Check if we should skip AI image generation due to rate limits
-function shouldSkipAIImageGeneration() {
-  if (isRateLimited && Date.now() < rateLimitResetTime) {
-    console.log("⏳ Skipping AI image generation due to rate limit");
-    return true;
-  }
-  isRateLimited = false;
-  return false;
-}
-
-// Gemini Imagen 3 - AI Image Generation
-async function generateImageWithImagen(prompt, contentType) {
-  if (shouldSkipAIImageGeneration()) return null;
-  
-  try {
-    // Use Gemini's imagen-3.0-generate-002 model for image generation
-    const imageModel = genAI.getGenerativeModel({ 
-      model: "imagen-3.0-generate-002"
-    });
-    
-    const imagePrompt = `Create a professional, high-quality illustration for: ${prompt}. 
-Style: Modern, clean, suitable for ${contentType || 'article'}. 
-Requirements: No text, visually appealing, professional quality.`;
-
-    console.log("Generating image with Imagen 3:", imagePrompt.substring(0, 100) + "...");
-
-    const result = await imageModel.generateContent({
-      contents: [{ role: "user", parts: [{ text: imagePrompt }] }],
-      generationConfig: {
-        responseModalities: ["image", "text"],
-        responseMimeType: "image/png"
-      }
-    });
-
-    const response = result.response;
-    
-    // Check if we got an image in the response
-    if (response.candidates && response.candidates[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
-          // Return base64 data URL
-          const base64Image = part.inlineData.data;
-          const mimeType = part.inlineData.mimeType;
-          console.log("Successfully generated AI image with Imagen 3");
-          return `data:${mimeType};base64,${base64Image}`;
-        }
-      }
-    }
-    
-    console.log("No image in Imagen response, falling back");
-    return null;
-  } catch (error) {
-    console.error("Imagen 3 image generation failed:", error.message);
-    // Check for rate limit error
-    if (error.status === 429 || error.message?.includes('429') || error.message?.includes('quota')) {
-      isRateLimited = true;
-      rateLimitResetTime = Date.now() + 60000; // Wait 60 seconds
-      console.log("🚫 Rate limited - will skip AI image generation for 60s");
-    }
-    return null;
-  }
-}
-
-// Alternative: Use Gemini 2.0 Flash for image generation (supports native image output)
-async function generateImageWithGemini2Flash(prompt, contentType) {
-  if (shouldSkipAIImageGeneration()) return null;
-  
-  try {
-    const imageModel = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash-exp"
-    });
-    
-    const imagePrompt = `Generate an image: A professional, high-quality visual representation for "${prompt}". 
-Style: Modern, clean design suitable for ${contentType || 'article'}.
-The image should be visually striking and relevant to the topic.`;
-
-    console.log("Generating image with Gemini 2.0 Flash...");
-
-    const result = await imageModel.generateContent({
-      contents: [{ role: "user", parts: [{ text: imagePrompt }] }],
-      generationConfig: {
-        responseModalities: ["image"],
-      }
-    });
-
-    const response = result.response;
-    
-    if (response.candidates && response.candidates[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
-          const base64Image = part.inlineData.data;
-          const mimeType = part.inlineData.mimeType;
-          console.log("Successfully generated AI image with Gemini 2.0 Flash");
-          return `data:${mimeType};base64,${base64Image}`;
-        }
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Gemini 2.0 Flash image generation failed:", error.message);
-    // Check for rate limit error
-    if (error.status === 429 || error.message?.includes('429') || error.message?.includes('quota')) {
-      isRateLimited = true;
-      rateLimitResetTime = Date.now() + 60000; // Wait 60 seconds
-      console.log("🚫 Rate limited - will skip AI image generation for 60s");
-    }
-    return null;
-  }
-}
 
 /**
  * @swagger
@@ -190,7 +75,7 @@ The image should be visually striking and relevant to the topic.`;
 // Simple keyword extraction without AI (to avoid rate limits)
 function extractKeywordsSimple(prompt, contentType) {
   // Extract meaningful words from prompt
-  const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'about', 'write', 'create', 'make', 'generate', 'content', 'article', 'blog', 'post'];
+  const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'about', 'write', 'create', 'make', 'generate', 'content', 'article', 'blog', 'post', 'essay', 'email', 'script', 'ad', 'seo', 'social'];
   
   const words = prompt.toLowerCase()
     .replace(/[^\w\s]/g, '')
@@ -200,15 +85,11 @@ function extractKeywordsSimple(prompt, contentType) {
   // Get unique words and prioritize longer ones
   const uniqueWords = [...new Set(words)].sort((a, b) => b.length - a.length);
   
-  // Take top 3 keywords
+  // Take top 3 keywords from prompt only (don't use contentType)
   const keywords = uniqueWords.slice(0, 3);
   
-  // Add content type as fallback if needed
-  if (keywords.length < 3 && contentType) {
-    keywords.push(contentType);
-  }
-  
-  return keywords.length > 0 ? keywords : [contentType || 'business', 'technology', 'professional'];
+  // If no keywords found, use generic fallbacks instead of contentType
+  return keywords.length > 0 ? keywords : ['professional', 'business', 'content'];
 }
 
 // Helper function to extract keywords (uses simple extraction to avoid rate limits)
@@ -223,7 +104,7 @@ async function fetchUnsplashImages(keywords) {
   const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
   
   if (!UNSPLASH_ACCESS_KEY) {
-    console.log("Unsplash API key not configured, using fallback images");
+    console.log("⚠️ Unsplash API key not configured, using fallback images only");
     return null;
   }
 
@@ -231,84 +112,113 @@ async function fetchUnsplashImages(keywords) {
     const images = [];
     
     for (const keyword of keywords) {
-      const response = await fetch(
-        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(keyword)}&per_page=1&orientation=landscape`,
-        {
+      try {
+        const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(keyword)}&per_page=1&orientation=landscape`;
+        console.log(`🔍 Searching Unsplash for: "${keyword}"`);
+        
+        const response = await fetch(url, {
           headers: {
             'Authorization': `Client-ID ${UNSPLASH_ACCESS_KEY}`
           }
-        }
-      );
+        });
 
-      if (response.ok) {
+        if (!response.ok) {
+          console.warn(`❌ Unsplash API error for "${keyword}": ${response.status} ${response.statusText}`);
+          continue;
+        }
+
         const data = await response.json();
         if (data.results && data.results.length > 0) {
-          images.push(data.results[0].urls.regular);
+          const imageUrl = data.results[0].urls.regular;
+          console.log(`✅ Found image for "${keyword}": ${imageUrl}`);
+          images.push({
+            url: imageUrl,
+            source: 'unsplash'
+          });
+        } else {
+          console.log(`⚠️ No results found for keyword: "${keyword}"`);
         }
+      } catch (keywordError) {
+        console.error(`❌ Error fetching image for keyword "${keyword}":`, keywordError.message);
+        continue;
       }
     }
 
-    return images.length > 0 ? images : null;
+    if (images.length > 0) {
+      console.log(`✅ Successfully fetched ${images.length} images from Unsplash`);
+      return images;
+    } else {
+      console.log("⚠️ No images were fetched from Unsplash, will use fallback");
+      return null;
+    }
   } catch (error) {
-    console.error("Error fetching Unsplash images:", error);
+    console.error("❌ Error fetching Unsplash images:", error.message);
     return null;
   }
 }
 
 // Helper function to generate relevant image suggestions
-// Image 1: AI-generated using Gemini Imagen 3
-// Images 2 & 3: Unsplash or Picsum fallback
+// Use only Unsplash + Picsum stock images (Gemini doesn't support image output)
 async function generateImageSuggestions(prompt, contentType, generatedContent) {
   try {
-    const images = [];
+    const imageResults = [];  // Array of { url, source }
     
-    // IMAGE 1: Generate with Gemini Imagen 3 (AI-generated)
-    console.log("🎨 Generating AI image with Gemini Imagen 3...");
-    let aiGeneratedImage = await generateImageWithImagen(prompt, contentType);
+    console.log("\n🖼️ ========== IMAGE GENERATION START ==========");
+    console.log("📷 Fetching stock images from Unsplash and fallbacks...");
     
-    // Fallback to Gemini 2.0 Flash if Imagen 3 fails
-    if (!aiGeneratedImage) {
-      console.log("Trying Gemini 2.0 Flash as fallback for AI image...");
-      aiGeneratedImage = await generateImageWithGemini2Flash(prompt, contentType);
-    }
-    
-    if (aiGeneratedImage) {
-      images.push(aiGeneratedImage);
-      console.log("✅ AI-generated image added as first image");
-    }
-    
-    // IMAGES 2 & 3: Use Unsplash/Picsum (current implementation)
-    console.log("📷 Fetching stock images for remaining slots...");
     const keywords = await extractImageKeywords(prompt, contentType, generatedContent);
-    console.log("AI-extracted image keywords:", keywords);
+    console.log("📌 Keywords extracted:", keywords);
 
-    // Try to fetch real images from Unsplash for remaining slots
-    const unsplashImages = await fetchUnsplashImages(keywords.slice(0, 2)); // Only need 2 more
+    // Try to fetch real images from Unsplash
+    const unsplashImages = await fetchUnsplashImages(keywords.slice(0, 3));
     
     if (unsplashImages && unsplashImages.length > 0) {
-      console.log(`Found ${unsplashImages.length} images from Unsplash`);
-      images.push(...unsplashImages);
+      console.log(`✅ Got ${unsplashImages.length} from Unsplash`);
+      imageResults.push(...unsplashImages);
+    } else {
+      console.log("⚠️ No Unsplash images returned");
     }
     
-    // Fill remaining slots with Picsum fallback
+    // Fill remaining slots with Picsum fallback (stock)
     const baseTime = Date.now();
-    while (images.length < 3) {
-      const index = images.length;
-      const imageId = ((baseTime + index * 100) % 1000) + 1;
-      const cacheBuster = baseTime + index;
-      images.push(`https://picsum.photos/800/600?random=${imageId}&t=${cacheBuster}`);
+    const picumCount = 3 - imageResults.length;
+    if (picumCount > 0) {
+      console.log(`📦 Adding ${picumCount} Picsum fallback images...`);
+      while (imageResults.length < 3) {
+        const index = imageResults.length;
+        const imageId = ((baseTime + index * 100) % 1000) + 1;
+        const cacheBuster = baseTime + index;
+        imageResults.push({
+          url: `https://picsum.photos/800/600?random=${imageId}&t=${cacheBuster}`,
+          source: 'stock'
+        });
+      }
     }
 
-    console.log(`📸 Total images prepared: ${images.length} (1 AI-generated + ${images.length - 1} stock)`);
-    return images.slice(0, 3); // Return exactly 3 images
+    const images = imageResults.slice(0, 3).map(img => img.url);
+    const tags = imageResults.slice(0, 3).map(img => img.source);
+    
+    console.log(`📸 Final Result: ${images.length} images (${tags.filter(t => t === 'unsplash').length} Unsplash + ${tags.filter(t => t === 'stock').length} Picsum)`);
+    console.log("✅ Images:", images);
+    console.log("✅ Tags:", tags);
+    console.log("🖼️ ========== IMAGE GENERATION END ==========\n");
+    
+    return {
+      images,
+      tags
+    };
   } catch (error) {
-    console.error("Error generating image suggestions:", error);
-    // Final fallback
-    return [
-      'https://picsum.photos/800/600?random=1',
-      'https://picsum.photos/800/600?random=2',
-      'https://picsum.photos/800/600?random=3'
-    ];
+    console.error("❌ Error in generateImageSuggestions:", error);
+    console.log("🖼️ ========== IMAGE GENERATION END (ERROR) ==========\n");
+    // Final fallback with proper structure
+    return {
+      images: [
+        'https://picsum.photos/800/600?random=1',
+        'https://picsum.photos/800/600?random=2',
+        'https://picsum.photos/800/600?random=3'
+      ],
+      tags: ['stock', 'stock', 'stock']
+    };
   }
 }
 
@@ -317,9 +227,7 @@ async function generateWithRetry(prompt, maxRetries = 2) {
   // Updated model names - use current available models
   // See: https://ai.google.dev/gemini-api/docs/models/gemini
   const models = [
-    "gemini-2.0-flash",           // Fastest, most available
-    "gemini-1.5-flash-latest",    // Latest 1.5 flash
-    "gemini-1.5-pro-latest",      // Latest 1.5 pro (fallback)
+    "gemini-2.5-flash",           // Fastest, most available
   ];
 
   for (const modelName of models) {
@@ -330,19 +238,34 @@ async function generateWithRetry(prompt, maxRetries = 2) {
         const response = await result.response;
         return response.text();
       } catch (error) {
-        console.log(
-          `Attempt ${attempt + 1} with ${modelName} failed:`,
-          error.message
-        );
-        if (attempt < maxRetries - 1) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * (attempt + 1))
+        // Check for quota/rate limit errors
+        if (error.status === 429 || error.message?.includes('quota') || error.message?.includes('429')) {
+          console.error(
+            `⚠️ Rate limited on ${modelName}: Quota exceeded. Waiting before retry...`
           );
+          if (attempt < maxRetries - 1) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 2000 * (attempt + 1))
+            );
+          }
+        } else if (error.status === 404) {
+          console.log(`Model ${modelName} not available, trying next...`);
+          break; // Skip to next model for 404 errors
+        } else {
+          console.log(
+            `Attempt ${attempt + 1} with ${modelName} failed:`,
+            error.message
+          );
+          if (attempt < maxRetries - 1) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 1000 * (attempt + 1))
+            );
+          }
         }
       }
     }
   }
-  throw new Error("All models failed after retries");
+  throw new Error("All models failed after retries. Free tier quota may be exceeded. Please check your API billing at https://ai.google.dev/");
 }
 
 router.post("/", async (req, res) => {
@@ -401,22 +324,36 @@ Start directly with the content.`;
     const text = await generateWithRetry(enhancedPrompt);
 
     // Generate image suggestions based on content using AI analysis
-    const imageUrls = await generateImageSuggestions(prompt, contentType, text);
+    // Uses Gemini Nano for AI generation and Unsplash for stock images
+    let imageUrls = null;
+    let imageTags = [];
+    try {
+      const imageResult = await generateImageSuggestions(prompt, contentType, text);
+      if (imageResult) {
+        imageUrls = imageResult.images;
+        imageTags = imageResult.tags;
+      }
+    } catch (imageError) {
+      console.warn("⚠️ Image generation failed, returning content without images:", imageError.message);
+      imageUrls = null;
+      imageTags = [];
+    }
 
     res.json({
       content: text,
       wordCount: text.split(/\s+/).length,
       platform: platform || "standard",
-      images: imageUrls,
-      imageTypes: [
-        imageUrls[0]?.startsWith('data:') ? 'ai-generated' : 'stock',
-        'stock',
-        'stock'
-      ]
+      images: imageUrls || [],
+      imageTypes: imageTags.length > 0 ? imageTags : []
     });
   } catch (error) {
     console.error("Error generating content:", error);
-    res.status(500).json({ error: "Failed to generate content" });
+    res.status(500).json({ 
+      error: "Failed to generate content. " + 
+             (error.message.includes("quota") ? 
+              "Free tier quota exceeded. Please upgrade your plan at https://ai.google.dev/" : 
+              error.message)
+    });
   }
 });
 
